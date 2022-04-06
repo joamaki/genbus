@@ -10,4 +10,4 @@ let
       };
     in import pinnedPkgs {};
 
-in pkgs.runCommand "dummy" { buildInputs = with pkgs; [ go_1_18 gopls ]; } ""
+in pkgs.runCommand "dummy" { buildInputs = with pkgs; [ go_1_18 gopls gcc ]; } ""

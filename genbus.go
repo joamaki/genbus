@@ -77,7 +77,9 @@ type subscriber struct {
 	handler func(ev Event) error
 }
 
-func Subscribe[E Event](bus *EventBus, name string, handler func(event E) error) error {
+type UnsubscribeFn func()
+
+func Subscribe[E Event](bus *EventBus, name string, handler func(event E) error) (UnsubscribeFn, error) {
 	bus.Lock()
 	defer bus.Unlock()
 
@@ -87,19 +89,31 @@ func Subscribe[E Event](bus *EventBus, name string, handler func(event E) error)
 
 	pub, ok := bus.pubs[typeId]
 	if !ok {
-		return fmt.Errorf("no publisher found for type %s", eventToTypeName(e))
+		return nil, fmt.Errorf("no publisher found for type %s", eventToTypeName(e))
 	}
 	pub.Lock()
 	defer pub.Unlock()
 
-	sub := subscriber{
+	sub := &subscriber{
 		name: name,
 		// Create a handler for 'Event' from the handler for 'E'. We know
 		// this is safe as it is indexed by the type id.
 		handler: func(ev Event) error { return handler(ev.(E)) },
 	}
-	pub.subs = append(pub.subs, &sub)
-	return nil
+	pub.subs = append(pub.subs, sub)
+
+	unsub := func() {
+		pub.Lock()
+		defer pub.Unlock()
+		for i, s := range pub.subs {
+			if s == sub {
+				pub.subs = deleteUnordered(pub.subs, i)
+				break
+			}
+		}
+	}
+
+	return unsub, nil
 }
 
 type PublishFn[E Event] func(ev E) error
@@ -128,4 +142,11 @@ func Register[E Event](bus *EventBus, name string) (PublishFn[E], error) {
 	bus.types[typeId] = typeName
 
 	return func(ev E) error { return pub.publish(typeId, ev) }, nil
+}
+
+func deleteUnordered[T any](slice []T, index int) []T {
+	var empty T
+	slice[index] = slice[len(slice)-1]
+	slice[len(slice)-1] = empty
+	return slice[:len(slice)-1]
 }

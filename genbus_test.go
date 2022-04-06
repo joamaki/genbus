@@ -27,8 +27,10 @@ func TestGenbus(t *testing.T) {
 	}
 
 	// Test consuming of EventA
-	err = Subscribe(bus, "print EventA",
+	countA := 0
+	_, err = Subscribe(bus, "print EventA",
 		func(ev *EventA) error {
+			countA++
 			fmt.Printf("evA: %s\n", ev)
 			return nil
 		})
@@ -37,9 +39,14 @@ func TestGenbus(t *testing.T) {
 	}
 
 	pubA(&EventA{})
+	pubA(&EventA{})
+
+	if countA != 2 {
+		t.Fatalf("expected to see 2 events, got %d", countA)
+	}
 
 	// Test subscribing to events that are not registered
-	err = Subscribe(bus, "unknown", func(ev *EventB) error {
+	_, err = Subscribe(bus, "unknown", func(ev *EventB) error {
 		return nil
 	})
 	if err == nil {
@@ -51,9 +58,12 @@ func TestGenbus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = Subscribe(bus, "print EventB",
+
+	countB := 0
+	_, err = Subscribe(bus, "print EventB",
 		func(ev *EventB) error {
 			fmt.Printf("evB: %s\n", ev)
+			countB++
 			return nil
 		})
 	if err != nil {
@@ -61,13 +71,20 @@ func TestGenbus(t *testing.T) {
 	}
 	pubB(&EventB{})
 
+	if countB != 1 {
+		t.Fatalf("expected to see 1 event, got %d", countB)
+	}
+
 	// Test with a non-pointer type
 	pubC, err := Register[EventC](bus, "source of EventC")
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = Subscribe(bus, "print EventC",
+
+	countC := 0
+	unsubC, err := Subscribe(bus, "print EventC",
 		func(ev EventC) error {
+			countC++
 			fmt.Printf("evC: %s\n", ev)
 			return nil
 		})
@@ -75,6 +92,16 @@ func TestGenbus(t *testing.T) {
 		t.Fatal(err)
 	}
 	pubC(EventC(123))
+	pubC(EventC(123))
+	pubC(EventC(123))
+	unsubC()
+	pubC(EventC(123))
+	pubC(EventC(123))
+
+	if countC != 3 {
+		t.Fatalf("expected to see 3 events, got %d", countC)
+	}
+
 }
 
 func BenchmarkGenbus(b *testing.B) {
@@ -86,7 +113,7 @@ func BenchmarkGenbus(b *testing.B) {
 	}
 
 	count := 0
-	err = Subscribe(bus, "count EventAs",
+	_, err = Subscribe(bus, "count EventAs",
 		func(ev *EventA) error {
 			count++
 			return nil
