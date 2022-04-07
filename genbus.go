@@ -19,13 +19,13 @@ var (
 type EventBusBuilder struct {
 	sync.Mutex
 	final atomicBool
-	subs  []subscriber
+	subs  []*subscriber
 	bus   *EventBus
 }
 
 func NewEventBusBuilder() *EventBusBuilder {
 	return &EventBusBuilder{
-		subs: []subscriber{},
+		subs: []*subscriber{},
 		bus: &EventBus{
 			pubs:  map[eventTypeId]*publisher{},
 			types: map[eventTypeId]string{},
@@ -88,7 +88,7 @@ func (bus *EventBus) DumpSubs() {
 type publisher struct {
 	typeId eventTypeId
 	name   string
-	subs   []subscriber
+	subs   []*subscriber
 }
 
 func (pub *publisher) publish(typeId eventTypeId, ev Event) error {
@@ -108,7 +108,7 @@ type subscriber struct {
 	handler  func(ev Event) error
 }
 
-type UnsubscribeFn func() error
+type UnsubscribeFn func()
 
 func Subscribe[E Event](builder *EventBusBuilder, name string, handler func(event E) error) UnsubscribeFn {
 	builder.Lock()
@@ -119,7 +119,7 @@ func Subscribe[E Event](builder *EventBusBuilder, name string, handler func(even
 
 	typeId := eventToTypeId(e)
 
-	sub := subscriber{
+	sub := &subscriber{
 		active:   atomicBool{1},
 		name:     name,
 		typeId:   typeId,
@@ -129,29 +129,7 @@ func Subscribe[E Event](builder *EventBusBuilder, name string, handler func(even
 		handler: func(ev Event) error { return handler(ev.(E)) },
 	}
 	builder.subs = append(builder.subs, sub)
-
-	unsub := func() error {
-		if !builder.final.get() {
-			// TODO: could remove it from the builder
-			return ErrEventBusNotFinal
-		}
-		pub, ok := builder.bus.pubs[typeId]
-		if !ok {
-			// Impossible, EventBusBuilder.Build would fail to construct EventBus if
-			// a publisher is not found.
-			return nil
-		}
-
-		for i := range pub.subs {
-			if pub.subs[i].name == sub.name {
-				pub.subs[i].active.unset()
-				break
-			}
-		}
-		return nil
-	}
-
-	return unsub
+	return func() { sub.active.unset() }
 }
 
 type PublishFn[E Event] func(ev E) error
@@ -166,7 +144,7 @@ func Register[E Event](builder *EventBusBuilder, name string) (PublishFn[E], err
 	typeName := eventToTypeName(e)
 	pub := &publisher{
 		name: name,
-		subs: []subscriber{},
+		subs: []*subscriber{},
 	}
 	builder.bus.pubs[typeId] = pub
 	builder.bus.types[typeId] = typeName
