@@ -6,6 +6,7 @@ package genbus
 import (
 	"fmt"
 	"reflect"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -16,15 +17,15 @@ var (
 	ErrEventBusAlreadyBuilt = fmt.Errorf("EventBus has already been built")
 )
 
-type EventBusBuilder struct {
+type Builder struct {
 	sync.Mutex
 	final atomicBool
 	subs  []*subscriber
 	bus   *EventBus
 }
 
-func NewEventBusBuilder() *EventBusBuilder {
-	return &EventBusBuilder{
+func NewBuilder() *Builder {
+	return &Builder{
 		subs: []*subscriber{},
 		bus: &EventBus{
 			pubs:  map[eventTypeId]*publisher{},
@@ -33,7 +34,7 @@ func NewEventBusBuilder() *EventBusBuilder {
 	}
 }
 
-func (builder *EventBusBuilder) Build() (*EventBus, error) {
+func (builder *Builder) Build() (*EventBus, error) {
 	if !builder.final.casSet() {
 		return nil, ErrEventBusAlreadyBuilt
 	}
@@ -76,19 +77,21 @@ type EventBus struct {
 	types map[eventTypeId]string
 }
 
-func (bus *EventBus) DumpSubs() {
+func (bus *EventBus) PrintGraph() {
+	fmt.Println("Event bus publishers and subscribers:")
 	for _, pub := range bus.pubs {
-		fmt.Printf("%s:\n", pub.name)
+		fmt.Printf("  %s [%s]:\n", pub.name, pub.typeName)
 		for _, sub := range pub.subs {
-			fmt.Printf("\t%s\n", sub.name)
+			fmt.Printf("    %s [%s]\n", sub.name, sub.from)
 		}
 	}
 }
 
 type publisher struct {
-	typeId eventTypeId
-	name   string
-	subs   []*subscriber
+	typeId   eventTypeId
+	typeName string
+	name     string
+	subs     []*subscriber
 }
 
 func (pub *publisher) publish(typeId eventTypeId, ev Event) error {
@@ -103,6 +106,7 @@ func (pub *publisher) publish(typeId eventTypeId, ev Event) error {
 type subscriber struct {
 	active   atomicBool
 	name     string
+	from     string
 	typeId   eventTypeId
 	typeName string
 	handler  func(ev Event) error
@@ -110,7 +114,7 @@ type subscriber struct {
 
 type UnsubscribeFn func()
 
-func Subscribe[E Event](builder *EventBusBuilder, name string, handler func(event E) error) UnsubscribeFn {
+func Subscribe[E Event](builder *Builder, name string, handler func(event E) error) UnsubscribeFn {
 	builder.Lock()
 	defer builder.Unlock()
 
@@ -119,9 +123,17 @@ func Subscribe[E Event](builder *EventBusBuilder, name string, handler func(even
 
 	typeId := eventToTypeId(e)
 
+	from := "<unknown>"
+	if pc, _, lineNum, ok := runtime.Caller(1); ok {
+		if fn := runtime.FuncForPC(pc); fn != nil {
+			from = fmt.Sprintf("%s#%d", fn.Name(), lineNum)
+		}
+	}
+
 	sub := &subscriber{
 		active:   atomicBool{1},
 		name:     name,
+		from:     from,
 		typeId:   typeId,
 		typeName: eventToTypeName(e),
 		// Create a handler for 'Event' from the handler for 'E'. We know
@@ -134,7 +146,7 @@ func Subscribe[E Event](builder *EventBusBuilder, name string, handler func(even
 
 type PublishFn[E Event] func(ev E) error
 
-func Register[E Event](builder *EventBusBuilder, name string) (PublishFn[E], error) {
+func Register[E Event](builder *Builder, name string) (PublishFn[E], error) {
 	builder.Lock()
 	defer builder.Unlock()
 
@@ -143,8 +155,9 @@ func Register[E Event](builder *EventBusBuilder, name string) (PublishFn[E], err
 	typeId := eventToTypeId(e)
 	typeName := eventToTypeName(e)
 	pub := &publisher{
-		name: name,
-		subs: []*subscriber{},
+		name:     name,
+		typeName: typeName,
+		subs:     []*subscriber{},
 	}
 	builder.bus.pubs[typeId] = pub
 	builder.bus.types[typeId] = typeName

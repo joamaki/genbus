@@ -18,7 +18,7 @@ func (c EventC) String() string { return "EventC" }
 
 func TestGenbus(t *testing.T) {
 
-	builder := NewEventBusBuilder()
+	builder := NewBuilder()
 
 	pubA, err := Register[*EventA](builder, "source of EventA")
 	if err != nil {
@@ -64,7 +64,7 @@ func TestGenbus(t *testing.T) {
 }
 
 func TestGenbusUnknownEvent(t *testing.T) {
-	builder := NewEventBusBuilder()
+	builder := NewBuilder()
 
 	// Test subscribing to events that are not registered
 	_ = Subscribe(builder, "unknown", func(ev *EventB) error {
@@ -78,7 +78,7 @@ func TestGenbusUnknownEvent(t *testing.T) {
 }
 
 func TestGenbusNonPointer(t *testing.T) {
-	builder := NewEventBusBuilder()
+	builder := NewBuilder()
 
 	// Test with a non-pointer type
 	pubC, err := Register[EventC](builder, "source of EventC")
@@ -115,7 +115,7 @@ func TestGenbusNonPointer(t *testing.T) {
 }
 
 func TestGenbusOutOfOrder(t *testing.T) {
-	builder := NewEventBusBuilder()
+	builder := NewBuilder()
 
 	// First subscribe to the event
 	countA := 0
@@ -144,7 +144,7 @@ func TestGenbusOutOfOrder(t *testing.T) {
 }
 
 func BenchmarkGenbus(b *testing.B) {
-	builder := NewEventBusBuilder()
+	builder := NewBuilder()
 
 	pubA, err := Register[*EventA](builder, "source of EventA")
 	if err != nil {
