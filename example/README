@@ -1,0 +1,12 @@
+
+Example project that combines 'genbus' and 'uber/fx' to provide the foundation for
+a larger application.
+
+Shows SBB's traffic timetables at the Zurich HB station.
+
+Run with:
+  $ go mod tidy
+  $ go run .
+
+For live data, get an API key from https://opentransportdata.swiss and edit
+'apiKey' and 'fakeIt' in pkg/sbbtraffic/sbbtraffic.go.
